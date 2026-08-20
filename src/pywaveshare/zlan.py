@@ -9,7 +9,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
 from pywaveshare._network import validate_host, validate_port, validate_timeout
@@ -162,7 +162,7 @@ class ZlanParameters:
     def with_dhcp(self, enabled: bool) -> ZlanParameters:
         if enabled and not self.supports_dhcp:
             raise ConfigurationError("device response does not advertise DHCP support")
-        return self._changed({_IP_MODE: 1 if enabled else 0})
+        return self._changed([(_IP_MODE, 1 if enabled else 0)])
 
     def with_static_network(
         self,
@@ -171,12 +171,12 @@ class ZlanParameters:
         netmask: str,
         gateway: str,
     ) -> ZlanParameters:
-        updates: dict[int | slice, int | bytes] = {
-            _LOCAL_IP: _ipv4_to_bytes(local_ip, "local_ip"),
-            _NETMASK: _ipv4_to_bytes(netmask, "netmask"),
-            _GATEWAY: _ipv4_to_bytes(gateway, "gateway"),
-            _IP_MODE: 0,
-        }
+        updates: list[tuple[int | slice, int | bytes]] = [
+            (_LOCAL_IP, _ipv4_to_bytes(local_ip, "local_ip")),
+            (_NETMASK, _ipv4_to_bytes(netmask, "netmask")),
+            (_GATEWAY, _ipv4_to_bytes(gateway, "gateway")),
+            (_IP_MODE, 0),
+        ]
         return self._changed(updates)
 
     def with_http_relay_profile(
@@ -194,17 +194,20 @@ class ZlanParameters:
         else:
             function_enable &= ~(1 << 7)
         return self._changed(
-            {
-                _LOCAL_PORT: local_port.to_bytes(2, "big"),
-                _WORK_MODE: TCP_SERVER,
-                _APP_PROTOCOL: TRANSPARENT_PROTOCOL,
-                _FUNCTION_ENABLE: function_enable,
-            }
+            [
+                (_LOCAL_PORT, local_port.to_bytes(2, "big")),
+                (_WORK_MODE, TCP_SERVER),
+                (_APP_PROTOCOL, TRANSPARENT_PROTOCOL),
+                (_FUNCTION_ENABLE, function_enable),
+            ]
         )
 
-    def _changed(self, updates: dict[int | slice, int | bytes]) -> ZlanParameters:
+    def _changed(
+        self,
+        updates: Iterable[tuple[int | slice, int | bytes]],
+    ) -> ZlanParameters:
         changed = bytearray(self._raw)
-        for key, value in updates.items():
+        for key, value in updates:
             if isinstance(key, int) and isinstance(value, int):
                 changed[key] = value
             elif isinstance(key, slice) and isinstance(value, bytes):
