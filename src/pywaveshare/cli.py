@@ -9,6 +9,7 @@ from collections.abc import Sequence
 
 from pywaveshare.exceptions import PyWaveshareError
 from pywaveshare.relay import RelayClient
+from pywaveshare.serial_server import SerialParity, SerialServerProfile
 from pywaveshare.zlan import ZlanClient
 
 
@@ -77,6 +78,31 @@ def _parser() -> argparse.ArgumentParser:
     profile.add_argument("--host", required=True)
     profile.add_argument("--relay-port", type=int, default=8000)
     profile.add_argument("--confirm-restart", action="store_true")
+
+    serial = zlan_commands.add_parser(
+        "serial-profile",
+        help="Set transparent TCP client / Configurar cliente TCP transparente",
+    )
+    serial.add_argument("--host", required=True)
+    serial.add_argument("--destination-ip", required=True)
+    serial.add_argument("--destination-port", type=int, required=True)
+    serial.add_argument("--local-port", type=int, default=0)
+    serial.add_argument("--baud-rate", type=int, required=True)
+    serial.add_argument("--data-bits", type=int, choices=(5, 6, 7, 8), default=8)
+    serial.add_argument(
+        "--parity",
+        choices=tuple(item.value for item in SerialParity),
+        default=SerialParity.NONE.value,
+    )
+    serial.add_argument("--stop-bits", type=int, choices=(1, 2), default=1)
+    serial.add_argument("--packet-interval-ms", type=int)
+    serial.add_argument("--packet-length", type=int)
+    serial.add_argument("--reconnect-seconds", type=int, default=5)
+    serial.add_argument("--keep-alive-seconds", type=int, default=15)
+    buffer_policy = serial.add_mutually_exclusive_group(required=True)
+    buffer_policy.add_argument("--preserve-serial-buffer", action="store_true")
+    buffer_policy.add_argument("--clear-serial-buffer", action="store_true")
+    serial.add_argument("--confirm-restart", action="store_true")
     return parser
 
 
@@ -144,6 +170,30 @@ def _run_zlan(args: argparse.Namespace) -> object:
             "operation": "relay-profile",
             "restart_expected": True,
             "http_files_still_require_vircom_upload": True,
+        }
+    if args.operation == "serial-profile":
+        profile = SerialServerProfile(
+            destination_ip=args.destination_ip,
+            destination_port=args.destination_port,
+            local_port=args.local_port,
+            baud_rate=args.baud_rate,
+            data_bits=args.data_bits,
+            parity=SerialParity(args.parity),
+            stop_bits=args.stop_bits,
+            packet_interval_ms=args.packet_interval_ms,
+            packet_length=args.packet_length,
+            reconnect_seconds=args.reconnect_seconds,
+            keep_alive_seconds=args.keep_alive_seconds,
+            preserve_serial_buffer=args.preserve_serial_buffer,
+        )
+        changed = profile.apply(current)
+        client.apply(args.host, changed, confirm_restart=args.confirm_restart)
+        return {
+            "ok": True,
+            "operation": "serial-profile",
+            "restart_expected": True,
+            "readback_required": True,
+            "desired": profile.as_dict(),
         }
     raise AssertionError("unhandled ZLAN operation")
 

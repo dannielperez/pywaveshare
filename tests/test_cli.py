@@ -102,6 +102,9 @@ class FakeParameters:
         assert local_port == 9000
         return self
 
+    def with_serial_server_profile(self, _profile: object) -> FakeParameters:
+        return self
+
 
 class FakeZlanClient:
     latest: ClassVar[FakeZlanClient | None] = None
@@ -140,6 +143,19 @@ class FakeZlanClient:
             "9000",
             "--confirm-restart",
         ],
+        [
+            "serial-profile",
+            "--host",
+            "192.0.2.20",
+            "--destination-ip",
+            "192.0.2.40",
+            "--destination-port",
+            "9036",
+            "--baud-rate",
+            "115200",
+            "--clear-serial-buffer",
+            "--confirm-restart",
+        ],
     ],
 )
 def test_zlan_commands(
@@ -152,5 +168,5 @@ def test_zlan_commands(
     output = json.loads(capsys.readouterr().out)
     assert output
     assert FakeZlanClient.latest is not None
-    if operation[0] in {"dhcp", "relay-profile"}:
+    if operation[0] in {"dhcp", "relay-profile", "serial-profile"}:
         assert FakeZlanClient.latest.applied[0][2] is True

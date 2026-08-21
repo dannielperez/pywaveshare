@@ -9,6 +9,7 @@ from pywaveshare.exceptions import (
     TransportError,
 )
 from pywaveshare.relay import RelayClient, RelayStatus
+from pywaveshare.serial_server import SerialParity, SerialServerProfile
 from pywaveshare.zlan import ZlanClient, ZlanParameters
 
 __all__ = [
@@ -19,10 +20,12 @@ __all__ = [
     "RelayClient",
     "RelayStatus",
     "SafetyConfirmationRequired",
+    "SerialParity",
+    "SerialServerProfile",
     "TransportError",
     "ZlanClient",
     "ZlanParameters",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 

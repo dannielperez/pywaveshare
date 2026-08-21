@@ -25,13 +25,22 @@ def response_packet(*, device_id: bytes = b"ABCDEF", supports_dhcp: bool = True)
     parameters[0:4] = bytes((192, 0, 2, 20))
     parameters[4:8] = bytes((255, 255, 255, 0))
     parameters[8:12] = bytes((192, 0, 2, 1))
+    parameters[12:16] = bytes((198, 51, 100, 10))
     parameters[16:18] = (8000).to_bytes(2, "big")
+    parameters[18:20] = (9000).to_bytes(2, "big")
     parameters[20] = 0
     parameters[21:31] = b"not-a-key!"
     parameters[31:37] = device_id
+    parameters[37] = 11
+    parameters[48] = 0
+    parameters[49] = 3
+    parameters[50:52] = (400).to_bytes(2, "big")
     parameters[56] = 0
     parameters[60] = 0
     parameters[61] = 1
+    parameters[66:79] = b"198.51.100.10"
+    parameters[96] = 5
+    parameters[97] = 15
     parameters[98:100] = (80).to_bytes(2, "big")
     parameters[103] = 117
     parameters[104] = (1 << 5) if supports_dhcp else 0
@@ -84,6 +93,17 @@ def test_parameters_are_redacted_and_typed() -> None:
     assert parameters.netmask == "255.255.255.0"
     assert parameters.gateway == "192.0.2.1"
     assert parameters.local_port == 8000
+    assert parameters.destination_ip == "198.51.100.10"
+    assert parameters.destination_port == 9000
+    assert parameters.baud_rate == 115200
+    assert parameters.data_bits == 8
+    assert parameters.parity == "none"
+    assert parameters.stop_bits == 1
+    assert parameters.packet_interval_ms == 3
+    assert parameters.packet_length == 400
+    assert parameters.reconnect_seconds == 5
+    assert parameters.keep_alive_seconds == 15
+    assert parameters.application_payloads_disabled
     assert parameters.web_port == 80
     assert parameters.connected
     assert parameters.device_id == "41:42:43:44:45:46"

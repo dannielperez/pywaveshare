@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pywaveshare"
-version = "0.1.0"
-description = "Safe Python SDK for Waveshare Ethernet relays and ZLAN provisioning"
+version = "0.2.0"
+description = "Safe Python SDK for Waveshare Ethernet relays and serial gateways"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
