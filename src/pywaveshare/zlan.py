@@ -83,7 +83,7 @@ _BAUD_RATE_BY_INDEX = {
     13: 460800,
 }
 _BAUD_INDEX_BY_RATE = {value: key for key, value in _BAUD_RATE_BY_INDEX.items()}
-_PARITY_BY_VALUE = {0: "none", 1: "odd", 2: "even", 3: "mark", 4: "space"}
+_PARITY_BY_VALUE = {0: "none", 1: "even", 2: "odd", 3: "mark", 4: "space"}
 _PARITY_VALUE_BY_NAME = {value: key for key, value in _PARITY_BY_VALUE.items()}
 _DATA_BITS_BY_VALUE = {0: 8, 1: 7, 2: 6, 3: 5}
 _DATA_BITS_VALUE_BY_COUNT = {value: key for key, value in _DATA_BITS_BY_VALUE.items()}
@@ -121,14 +121,15 @@ class ZlanParameters:
 
     _raw: bytes = field(repr=False)
     _from_device: bool = field(default=False, repr=False)
+    _source_host: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if len(self._raw) != PARAMETER_LENGTH:
             raise ProtocolError(f"ZLAN parameter block must be {PARAMETER_LENGTH} bytes")
 
     @classmethod
-    def from_response(cls, packet: bytes) -> ZlanParameters:
-        return cls(_parse_response(packet), _from_device=True)
+    def from_response(cls, packet: bytes, *, source_host: str | None = None) -> ZlanParameters:
+        return cls(_parse_response(packet), _from_device=True, _source_host=source_host)
 
     @property
     def local_ip(self) -> str:
@@ -295,6 +296,11 @@ class ZlanParameters:
             "application_payloads_disabled": self.application_payloads_disabled,
         }
 
+    def same_configuration(self, other: ZlanParameters) -> bool:
+        """Compare complete redacted configurations without exposing their raw bytes."""
+
+        return self._raw == other._raw
+
     def with_dhcp(self, enabled: bool) -> ZlanParameters:
         if enabled and not self.supports_dhcp:
             raise ConfigurationError("device response does not advertise DHCP support")
@@ -407,7 +413,11 @@ class ZlanParameters:
                 changed[key] = value
             else:  # pragma: no cover - internal update definitions are statically controlled
                 raise TypeError("invalid internal ZLAN parameter update")
-        return ZlanParameters(bytes(changed), _from_device=self._from_device)
+        return ZlanParameters(
+            bytes(changed),
+            _from_device=self._from_device,
+            _source_host=self._source_host,
+        )
 
     def _write_packet(self) -> bytes:
         if not self._from_device:
@@ -444,9 +454,12 @@ class ZlanClient:
         sock = self._socket_factory(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             sock.settimeout(self.timeout)
-            sock.sendto(command_packet(READ_UNICAST), (target, self.port))
-            packet, _source = sock.recvfrom(2048)
-            return ZlanParameters.from_response(packet)
+            sock.connect((target, self.port))
+            sent = sock.send(command_packet(READ_UNICAST))
+            if sent != PACKET_LENGTH:
+                raise TransportError("ZLAN unicast query was not sent completely")
+            packet = sock.recv(2048)
+            return ZlanParameters.from_response(packet, source_host=target)
         except TimeoutError as exc:
             raise TransportError("ZLAN unicast read timed out") from exc
         except OSError as exc:
@@ -480,7 +493,7 @@ class ZlanClient:
                 except TimeoutError:
                     break
                 try:
-                    parameters = ZlanParameters.from_response(packet)
+                    parameters = ZlanParameters.from_response(packet, source_host=_source[0])
                 except ProtocolError:
                     continue
                 found[parameters.device_id] = parameters
@@ -505,10 +518,15 @@ class ZlanClient:
             )
         target = validate_host(host)
         packet = parameters._write_packet()
+        if parameters._source_host != target:
+            raise SafetyConfirmationRequired(
+                "ZLAN configuration must be written to the same host that supplied the parameters"
+            )
         sock = self._socket_factory(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             sock.settimeout(self.timeout)
-            sent = sock.sendto(packet, (target, self.port))
+            sock.connect((target, self.port))
+            sent = sock.send(packet)
             if sent != len(packet):
                 raise TransportError("ZLAN configuration packet was not sent completely")
         except TimeoutError as exc:

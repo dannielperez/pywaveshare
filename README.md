@@ -136,6 +136,10 @@ pywaveshare zlan serial-profile --host 192.0.2.20 \
   --clear-serial-buffer --confirm-restart
 ```
 
+The CLI skips the write and reports `already_configured` when the complete device configuration
+already matches. After a change it reports `pending_verification`, never success: wait for the
+restart, run `zlan read`, and compare the observed state before marking provisioning complete.
+
 The serial values are examples only; obtain the actual baud rate, data bits, parity, stop bits,
 encoding, and cable pinout from the POS vendor. Choose exactly one buffer policy. Clearing avoids
 replaying stale receipt lines against later video; preserving reduces loss during a network outage.
@@ -155,7 +159,7 @@ values until their wire encodings are confirmed on the target firmware.
 
 - ZLAN parameter packets may contain a management password. Raw packets are private, excluded from
   object representations, and never returned by the CLI.
-- ZLAN writes are accepted only from a full packet previously read from the device.
+- ZLAN writes are accepted only from a full packet previously read from that same device address.
 - Relay writes and configuration restarts require explicit confirmation.
 - Every network operation has a finite timeout.
 - Writes, pulses, and restarts are never retried automatically.
@@ -234,6 +238,10 @@ pywaveshare zlan serial-profile --host 192.0.2.20 \
   --local-port 0 --reconnect-seconds 5 --keep-alive-seconds 15 \
   --clear-serial-buffer --confirm-restart
 ```
+
+El CLI omite la escritura e informa `already_configured` cuando la configuración completa ya
+coincide. Después de un cambio informa `pending_verification`, nunca éxito: espere el reinicio,
+ejecute `zlan read` y compare el estado observado antes de cerrar el aprovisionamiento.
 
 Los valores seriales son ejemplos. Confirme con el proveedor del POS la velocidad, bits de datos,
 paridad, bits de parada, codificación y pinout. Elija explícitamente conservar o limpiar el buffer y

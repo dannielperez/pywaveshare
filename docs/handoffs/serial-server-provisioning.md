@@ -17,18 +17,32 @@
 - Ambiguous/custom variable parameters block provisioning. The SDK does not erase possible
   registration, heartbeat, multi-destination, MQTT, VLAN, or firmware-specific data.
 - Configuration writes restart the gateway, require explicit confirmation, and are attempted once.
+- Unicast reads use a connected UDP socket, and writes accept only parameters read from the same
+  target address, preventing a response from another gateway from being written to the target.
+- Identical complete configurations are a no-op. Changed configurations report
+  `pending_verification`; the CLI never claims success before a post-restart readback.
 - The caller must choose whether to preserve or clear disconnected serial data.
 - 300/600 baud and 9 data bits remain unsupported because the official public ZLAN mapping does not
   define their byte encodings.
 
 ## Validation
 
-- `.venv/Scripts/python.exe -m pytest --cov=pywaveshare --cov-report=term-missing`: 76 passed,
-  96% coverage.
+- `.venv/Scripts/python.exe -m pytest --cov=pywaveshare --cov-report=term-missing`: 83 passed,
+  96.02% coverage.
 - `.venv/Scripts/python.exe -m ruff check .`: passed.
-- `.venv/Scripts/python.exe -m mypy src`: passed under strict mode.
+- `.venv/Scripts/ruff.exe format --check` on every changed Python file: passed. Unchanged legacy
+  files still have pre-existing formatter drift and remain outside this SDK feature scope.
+- `.venv/Scripts/mypy.exe --strict src`: passed.
 - Editable install/build through the Hatchling backend: passed.
-- Pending final diff check and PR self-review after documentation cleanup.
+- `git diff --check`: passed.
+
+## Review fan-out
+
+- Stability review: blockers fixed by target-bound UDP reads/writes and pending-verification output;
+  repeated identical profiles now skip restart. Finite timeouts and no-retry behavior retained.
+- SDK-boundary review: no UniqueOS/Django leakage. Corrected the official UDP parity mapping
+  (`1=even`, `2=odd`), allowed the documented `0..255` timing range, and added runtime validation
+  for the explicit boolean buffer policy.
 
 ## Integration sequence
 

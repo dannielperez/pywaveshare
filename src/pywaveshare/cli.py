@@ -187,10 +187,20 @@ def _run_zlan(args: argparse.Namespace) -> object:
             preserve_serial_buffer=args.preserve_serial_buffer,
         )
         changed = profile.apply(current)
+        if current.same_configuration(changed):
+            return {
+                "operation": "serial-profile",
+                "provisioning_status": "already_configured",
+                "write_attempted": False,
+                "restart_expected": False,
+                "readback_required": False,
+                "observed": current.as_dict(),
+            }
         client.apply(args.host, changed, confirm_restart=args.confirm_restart)
         return {
-            "ok": True,
             "operation": "serial-profile",
+            "provisioning_status": "pending_verification",
+            "write_attempted": True,
             "restart_expected": True,
             "readback_required": True,
             "desired": profile.as_dict(),
@@ -212,4 +222,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-

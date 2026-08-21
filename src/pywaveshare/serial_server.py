@@ -43,6 +43,8 @@ class SerialServerProfile:
     keep_alive_seconds: int = 15
 
     def __post_init__(self) -> None:
+        if not isinstance(self.preserve_serial_buffer, bool):
+            raise ConfigurationError("preserve_serial_buffer must be a boolean")
         try:
             parsed_ip = ipaddress.IPv4Address(self.destination_ip)
         except ipaddress.AddressValueError:
@@ -64,10 +66,10 @@ class SerialServerProfile:
             raise ConfigurationError("packet_interval_ms must be between 0 and 255")
         if self.packet_length is not None and not 1 <= self.packet_length <= 1400:
             raise ConfigurationError("packet_length must be between 1 and 1400")
-        if not 0 <= self.reconnect_seconds <= 254:
-            raise ConfigurationError("reconnect_seconds must be between 0 and 254")
-        if not 0 <= self.keep_alive_seconds <= 254:
-            raise ConfigurationError("keep_alive_seconds must be between 0 and 254")
+        if not 0 <= self.reconnect_seconds <= 255:
+            raise ConfigurationError("reconnect_seconds must be between 0 and 255")
+        if not 0 <= self.keep_alive_seconds <= 255:
+            raise ConfigurationError("keep_alive_seconds must be between 0 and 255")
 
     def apply(self, parameters: ZlanParameters) -> ZlanParameters:
         """Return a read-modify-write result without contacting the device."""

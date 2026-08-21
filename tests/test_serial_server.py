@@ -104,6 +104,17 @@ def test_profile_can_preserve_buffer_and_set_two_stop_bits() -> None:
     assert changed._raw[114] == 0b1011
 
 
+@pytest.mark.parametrize(
+    ("parity", "wire_value"),
+    [(SerialParity.EVEN, 1), (SerialParity.ODD, 2)],
+)
+def test_parity_matches_official_udp_protocol(parity: SerialParity, wire_value: int) -> None:
+    changed = profile(parity=parity).apply(ZlanParameters.from_response(response_packet()))
+
+    assert changed._raw[48] == wire_value
+    assert changed.parity == parity.value
+
+
 def test_read_only_counter_tlvs_are_preserved() -> None:
     variable = bytearray(52)
     variable[:12] = bytes((9, 4, 0, 0, 0, 12, 10, 4, 0, 0, 0, 34))
@@ -140,8 +151,9 @@ def test_ambiguous_application_payloads_block_provisioning(variable: bytes) -> N
         ({"stop_bits": 3}, "stop_bits"),
         ({"packet_interval_ms": 256}, "packet_interval"),
         ({"packet_length": 0}, "packet_length"),
-        ({"reconnect_seconds": 255}, "reconnect_seconds"),
-        ({"keep_alive_seconds": 255}, "keep_alive_seconds"),
+        ({"reconnect_seconds": 256}, "reconnect_seconds"),
+        ({"keep_alive_seconds": 256}, "keep_alive_seconds"),
+        ({"preserve_serial_buffer": "false"}, "preserve_serial_buffer"),
     ],
 )
 def test_profile_rejects_unsafe_values(overrides: dict[str, object], message: str) -> None:
@@ -152,6 +164,15 @@ def test_profile_rejects_unsafe_values(overrides: dict[str, object], message: st
 def test_unmapped_baud_rate_is_rejected_before_write() -> None:
     with pytest.raises(ConfigurationError, match="not mapped"):
         profile(baud_rate=600).apply(ZlanParameters.from_response(response_packet()))
+
+
+def test_maximum_reconnect_and_keep_alive_values_are_supported() -> None:
+    changed = profile(reconnect_seconds=255, keep_alive_seconds=255).apply(
+        ZlanParameters.from_response(response_packet())
+    )
+
+    assert changed.reconnect_seconds == 255
+    assert changed.keep_alive_seconds == 255
 
 
 def test_profile_summary_is_redacted_and_explicit() -> None:

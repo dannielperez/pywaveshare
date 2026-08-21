@@ -54,6 +54,7 @@ class FakeSocket:
         self.timeouts: list[float] = []
         self.options: list[tuple[int, int, int]] = []
         self.bound: tuple[str, int] | None = None
+        self.connected: tuple[str, int] | None = None
         self.closed = False
 
     def settimeout(self, timeout: float) -> None:
@@ -65,6 +66,15 @@ class FakeSocket:
     def bind(self, address: tuple[str, int]) -> None:
         self.bound = address
 
+    def connect(self, address: tuple[str, int]) -> None:
+        self.connected = address
+
+    def send(self, packet: bytes) -> int:
+        if self.connected is None:
+            raise AssertionError("socket is not connected")
+        self.sent.append((packet, self.connected))
+        return len(packet)
+
     def sendto(self, packet: bytes, address: tuple[str, int]) -> int:
         self.sent.append((packet, address))
         return len(packet)
@@ -72,6 +82,12 @@ class FakeSocket:
     def recvfrom(self, _size: int) -> tuple[bytes, tuple[str, int]]:
         try:
             return next(self.responses), ("192.0.2.20", 1092)
+        except StopIteration:
+            raise TimeoutError from None
+
+    def recv(self, _size: int) -> bytes:
+        try:
+            return next(self.responses)
         except StopIteration:
             raise TimeoutError from None
 
@@ -88,7 +104,7 @@ def test_query_packets_are_fixed_size() -> None:
 
 
 def test_parameters_are_redacted_and_typed() -> None:
-    parameters = ZlanParameters.from_response(response_packet())
+    parameters = ZlanParameters.from_response(response_packet(), source_host="192.0.2.20")
     assert parameters.local_ip == "192.0.2.20"
     assert parameters.netmask == "255.255.255.0"
     assert parameters.gateway == "192.0.2.1"
@@ -115,7 +131,7 @@ def test_parameters_are_redacted_and_typed() -> None:
 def test_read_modify_write_preserves_unknown_and_secret_bytes() -> None:
     original = response_packet()
     changed = (
-        ZlanParameters.from_response(original)
+        ZlanParameters.from_response(original, source_host="192.0.2.20")
         .with_dhcp(True)
         .with_http_relay_profile(local_port=9000)
     )
@@ -171,7 +187,9 @@ def test_write_requires_device_origin_and_id() -> None:
     synthetic = ZlanParameters(bytes(167))
     with pytest.raises(SafetyConfirmationRequired, match="read from the device"):
         client.apply("192.0.2.20", synthetic, confirm_restart=True)
-    empty_id = ZlanParameters.from_response(response_packet(device_id=bytes(6)))
+    empty_id = ZlanParameters.from_response(
+        response_packet(device_id=bytes(6)), source_host="192.0.2.20"
+    )
     with pytest.raises(ProtocolError, match="device ID"):
         client.apply("192.0.2.20", empty_id, confirm_restart=True)
 
@@ -225,15 +243,31 @@ def test_client_configuration_validation() -> None:
 
 
 class ShortSendSocket(FakeSocket):
-    def sendto(self, packet: bytes, address: tuple[str, int]) -> int:
-        super().sendto(packet, address)
+    def send(self, packet: bytes) -> int:
+        super().send(packet)
         return len(packet) - 1
 
 
 def test_partial_configuration_send_is_rejected() -> None:
     fake = ShortSendSocket()
-    parameters = ZlanParameters.from_response(response_packet())
+    parameters = ZlanParameters.from_response(response_packet(), source_host="192.0.2.20")
     with pytest.raises(TransportError, match="not sent completely"):
         ZlanClient(socket_factory=lambda *_args: fake).apply(
+            "192.0.2.20", parameters, confirm_restart=True
+        )
+
+
+def test_apply_rejects_parameters_from_another_host() -> None:
+    parameters = ZlanParameters.from_response(response_packet(), source_host="192.0.2.21")
+    with pytest.raises(SafetyConfirmationRequired, match="same host"):
+        ZlanClient(socket_factory=lambda *_args: FakeSocket()).apply(
+            "192.0.2.20", parameters, confirm_restart=True
+        )
+
+
+def test_apply_rejects_parameters_without_source_identity() -> None:
+    parameters = ZlanParameters.from_response(response_packet())
+    with pytest.raises(SafetyConfirmationRequired, match="same host"):
+        ZlanClient(socket_factory=lambda *_args: FakeSocket()).apply(
             "192.0.2.20", parameters, confirm_restart=True
         )

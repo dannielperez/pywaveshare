@@ -91,6 +91,8 @@ def test_relay_commands(
 
 
 class FakeParameters:
+    already_configured: ClassVar[bool] = False
+
     def as_dict(self) -> dict[str, object]:
         return {"device_id": "AA:BB:CC:DD:EE:FF"}
 
@@ -104,6 +106,9 @@ class FakeParameters:
 
     def with_serial_server_profile(self, _profile: object) -> FakeParameters:
         return self
+
+    def same_configuration(self, _other: object) -> bool:
+        return self.already_configured
 
 
 class FakeZlanClient:
@@ -164,9 +169,43 @@ def test_zlan_commands(
     operation: list[str],
 ) -> None:
     monkeypatch.setattr(cli, "ZlanClient", FakeZlanClient)
+    FakeParameters.already_configured = False
     assert cli.main(["zlan", *operation]) == 0
     output = json.loads(capsys.readouterr().out)
     assert output
     assert FakeZlanClient.latest is not None
     if operation[0] in {"dhcp", "relay-profile", "serial-profile"}:
         assert FakeZlanClient.latest.applied[0][2] is True
+
+
+def test_serial_profile_skips_restart_when_already_configured(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "ZlanClient", FakeZlanClient)
+    FakeParameters.already_configured = True
+    assert (
+        cli.main(
+            [
+                "zlan",
+                "serial-profile",
+                "--host",
+                "192.0.2.20",
+                "--destination-ip",
+                "192.0.2.40",
+                "--destination-port",
+                "9036",
+                "--baud-rate",
+                "115200",
+                "--clear-serial-buffer",
+                "--confirm-restart",
+            ]
+        )
+        == 0
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert output["provisioning_status"] == "already_configured"
+    assert output["write_attempted"] is False
+    assert FakeZlanClient.latest is not None
+    assert FakeZlanClient.latest.applied == []
+    FakeParameters.already_configured = False
